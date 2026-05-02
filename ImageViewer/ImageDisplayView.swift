@@ -11,7 +11,6 @@ struct ImageDisplayView: View {
     @State private var isAnimatedGIF = false
     @State private var magnificationStartScale: CGFloat?
     @State private var dragStartOffset: CGSize?
-    @State private var imageLoadTask: Task<Void, Never>?
 
     var body: some View {
         GeometryReader { proxy in
@@ -37,13 +36,39 @@ struct ImageDisplayView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
-            .onChange(of: url, initial: true) {
-                loadImage(from: url)
+            .onChange(of: url) {
+                resetForNewImage(url)
+            }
+            .task(id: url) {
+                await loadImageTask(url: url)
             }
             .onChange(of: proxy.size) {
                 state.offset = clampedOffset(state.offset, in: proxy.size)
             }
         }
+    }
+
+    private func resetForNewImage(_ url: URL?) {
+        state.currentImageURL = url
+        image = nil
+        imageSize = .zero
+        isAnimatedGIF = false
+        state.offset = .zero
+        state.rotation = .zero
+    }
+
+    private func loadImageTask(url: URL?) async {
+        guard let url else { return }
+
+        let loadedImage = await Task.detached(priority: .userInitiated) { () -> NSImage? in
+            Self.loadSupportedImage(from: url)
+        }.value
+
+        guard !Task.isCancelled else { return }
+
+        image = loadedImage
+        imageSize = loadedImage?.size ?? .zero
+        isAnimatedGIF = url.pathExtension.localizedCaseInsensitiveCompare("gif") == .orderedSame
     }
 
     @ViewBuilder
@@ -71,14 +96,14 @@ struct ImageDisplayView: View {
                 let startScale = magnificationStartScale ?? state.scale
                 magnificationStartScale = startScale
 
-                state.scale = ImageViewerState.clampScale(startScale * value)
+                state.setScale(startScale * value)
                 state.offset = clampedOffset(state.offset, in: containerSize)
             }
             .onEnded { value in
                 let startScale = magnificationStartScale ?? state.scale
                 magnificationStartScale = nil
 
-                state.scale = ImageViewerState.clampScale(startScale * value)
+                state.setScale(startScale * value)
                 state.offset = clampedOffset(state.offset, in: containerSize)
             }
     }
@@ -120,36 +145,12 @@ struct ImageDisplayView: View {
     private func doubleTapGesture(in containerSize: CGSize) -> some Gesture {
         TapGesture(count: 2)
             .onEnded {
-                state.scale = state.scale == 1.0 ? 2.0 : 1.0
+                state.setScale(state.scale == 1.0 ? 2.0 : 1.0)
                 state.offset = clampedOffset(state.offset, in: containerSize)
             }
     }
 
-    private func loadImage(from url: URL?) {
-        imageLoadTask?.cancel()
-        state.currentImageURL = url
-        image = nil
-        imageSize = .zero
-        isAnimatedGIF = false
-        state.offset = .zero
-        state.rotation = .zero
-
-        guard let url else { return }
-
-        imageLoadTask = Task {
-            let loadedImage = await Task.detached(priority: .userInitiated) { () -> NSImage? in
-                Self.loadSupportedImage(from: url)
-            }.value
-
-            guard !Task.isCancelled, state.currentImageURL == url else { return }
-
-            image = loadedImage
-            imageSize = loadedImage?.size ?? .zero
-            isAnimatedGIF = url.pathExtension.localizedCaseInsensitiveCompare("gif") == .orderedSame
-        }
-    }
-
-    private static func loadSupportedImage(from url: URL) -> NSImage? {
+    private nonisolated static func loadSupportedImage(from url: URL) -> NSImage? {
         if let image = NSImage(contentsOf: url) {
             if url.pathExtension.localizedCaseInsensitiveCompare("gif") == .orderedSame {
                 configureGIFLooping(for: image)
@@ -164,7 +165,7 @@ struct ImageDisplayView: View {
         return loadHEICWithImageSource(from: url)
     }
 
-    private static func loadHEICWithImageSource(from url: URL) -> NSImage? {
+    private nonisolated static func loadHEICWithImageSource(from url: URL) -> NSImage? {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil)
         else {
@@ -174,7 +175,7 @@ struct ImageDisplayView: View {
         return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
     }
 
-    private static func configureGIFLooping(for image: NSImage) {
+    private nonisolated static func configureGIFLooping(for image: NSImage) {
         for case let bitmapRep as NSBitmapImageRep in image.representations {
             bitmapRep.setProperty(.loopCount, withValue: 0)
         }

@@ -7,6 +7,7 @@
 
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 @main
 struct ImageViewerApp: App {
@@ -57,7 +58,11 @@ struct ImageViewerApp: App {
         panel.allowsMultipleSelection = false
         panel.canChooseFiles = true
         panel.canChooseDirectories = true
-        panel.allowedFileTypes = ["jpg", "jpeg", "png", "gif", "heic", "mov", "mp4", "m4v"]
+        panel.allowedContentTypes = [
+            .image, .movie,
+            UTType(filenameExtension: "heic") ?? .image,
+            UTType(filenameExtension: "gif") ?? .image
+        ]
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
         handleOpenSelection(url)

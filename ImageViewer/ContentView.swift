@@ -116,14 +116,14 @@ struct ContentView: View {
                 
                 Divider()
                 
-                Button(action: { state.scale = max(ImageViewerState.minimumScale, state.scale - 0.25) }) {
+                Button(action: { state.setScale(state.scale - 0.25) }) {
                     Image(systemName: "minus.magnifyingglass")
                 }
                 
                 Text("\(Int(state.scale * 100))%")
                     .frame(width: 50)
                 
-                Button(action: { state.scale = min(ImageViewerState.maximumScale, state.scale + 0.25) }) {
+                Button(action: { state.setScale(state.scale + 0.25) }) {
                     Image(systemName: "plus.magnifyingglass")
                 }
                 

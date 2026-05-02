@@ -2,24 +2,23 @@ import Foundation
 import Observation
 import SwiftUI
 
+@MainActor
 @Observable
 final class ImageViewerState {
     static let minimumScale: CGFloat = 0.1
     static let maximumScale: CGFloat = 10.0
 
-    var scale: CGFloat = 1.0 {
-        didSet {
-            scale = Self.clampScale(scale)
-
-            if scale == 1.0 {
-                offset = .zero
-            }
-        }
-    }
-
+    var scale: CGFloat = 1.0
     var offset: CGSize = .zero
     var rotation: Angle = .zero
     var currentImageURL: URL?
+
+    func setScale(_ value: CGFloat) {
+        scale = clamp(value)
+        if scale == 1.0 {
+            offset = .zero
+        }
+    }
 
     func resetView() {
         scale = 1.0
@@ -45,7 +44,7 @@ final class ImageViewerState {
         rotation += .degrees(90)
     }
 
-    static func clampScale(_ scale: CGFloat) -> CGFloat {
-        min(maximumScale, max(minimumScale, scale))
+    private func clamp(_ value: CGFloat) -> CGFloat {
+        min(Self.maximumScale, max(Self.minimumScale, value))
     }
 }
