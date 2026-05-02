@@ -120,6 +120,7 @@ struct ImageDisplayView: View {
         image = nil
         imageSize = .zero
         state.offset = .zero
+        state.rotation = .zero
 
         guard let url else { return }
 

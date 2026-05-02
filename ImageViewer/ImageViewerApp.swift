@@ -12,13 +12,7 @@ import AppKit
 struct ImageViewerApp: App {
     @State private var mediaFileManager = MediaFileManager()
     @State private var mediaCacheManager = MediaCacheManager()
-
-    private let openAction: () -> Void = {}
-    private let rotateLeftAction: () -> Void = {}
-    private let rotateRightAction: () -> Void = {}
-    private let slideshowStartAction: () -> Void = {}
-    private let zoomToFitAction: () -> Void = {}
-    private let actualSizeAction: () -> Void = {}
+    @State private var viewerState = ImageViewerState()
 
     var body: some Scene {
         WindowGroup {
@@ -28,28 +22,28 @@ struct ImageViewerApp: App {
         .defaultSize(width: 1000, height: 700)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("Open…", action: openAction)
+                Button("Open…") {}
                     .keyboardShortcut("o")
             }
 
             CommandGroup(after: .toolbar) {
-                Button("Zoom to Fit", action: zoomToFitAction)
+                Button("Zoom to Fit") { viewerState.zoomToFit() }
                     .keyboardShortcut("0")
 
-                Button("Actual Size", action: actualSizeAction)
+                Button("Actual Size") { viewerState.zoomToActualSize() }
                     .keyboardShortcut("1")
             }
 
             CommandMenu("Image") {
-                Button("Rotate Left", action: rotateLeftAction)
+                Button("Rotate Left") { viewerState.rotateLeft() }
                     .keyboardShortcut("l")
 
-                Button("Rotate Right", action: rotateRightAction)
+                Button("Rotate Right") { viewerState.rotateRight() }
                     .keyboardShortcut("r")
             }
 
             CommandMenu("Slideshow") {
-                Button("Start", action: slideshowStartAction)
+                Button("Start") {}
                     .keyboardShortcut("S", modifiers: [.command, .shift])
             }
         }
