@@ -1,6 +1,12 @@
 import Foundation
 import Observation
 
+extension Notification.Name {
+    static let navigateToPrevious = Notification.Name("navigateToPrevious")
+    static let navigateToNext = Notification.Name("navigateToNext")
+    static let toggleSlideshow = Notification.Name("toggleSlideshow")
+}
+
 @Observable
 final class MediaFileManager {
     var files: [URL] = []
@@ -44,5 +50,15 @@ final class MediaFileManager {
         }
 
         return files
+    }
+    
+    func navigateToPrevious() {
+        guard currentIndex > 0 else { return }
+        currentIndex -= 1
+    }
+    
+    func navigateToNext() {
+        guard currentIndex < files.count - 1 else { return }
+        currentIndex += 1
     }
 }

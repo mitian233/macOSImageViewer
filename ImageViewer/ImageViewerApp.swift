@@ -28,11 +28,24 @@ struct ImageViewerApp: App {
                 Button("Open…") { presentOpenPanel() }
                     .keyboardShortcut("o")
             }
-
+            
+            // 导航命令
             CommandGroup(after: .toolbar) {
+                Button("Previous") { 
+                    NotificationCenter.default.post(name: .navigateToPrevious, object: nil)
+                }
+                    .keyboardShortcut(.leftArrow, modifiers: [])
+                
+                Button("Next") { 
+                    NotificationCenter.default.post(name: .navigateToNext, object: nil)
+                }
+                    .keyboardShortcut(.rightArrow, modifiers: [])
+                
+                Divider()
+                
                 Button("Zoom to Fit") { viewerState.zoomToFit() }
                     .keyboardShortcut("0")
-
+                
                 Button("Actual Size") { viewerState.zoomToActualSize() }
                     .keyboardShortcut("1")
             }
@@ -46,8 +59,10 @@ struct ImageViewerApp: App {
             }
 
             CommandMenu("Slideshow") {
-                Button("Start") {}
-                    .keyboardShortcut("S", modifiers: [.command, .shift])
+                Button("Toggle") { 
+                    NotificationCenter.default.post(name: .toggleSlideshow, object: nil)
+                }
+                    .keyboardShortcut(.space, modifiers: [])
             }
         }
     }

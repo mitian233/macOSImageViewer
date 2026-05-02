@@ -83,18 +83,6 @@ struct ContentView: View {
                 }
             }
         }
-        .onKeyPress(.leftArrow) {
-            previousMedia()
-            return .handled
-        }
-        .onKeyPress(.rightArrow) {
-            nextMedia()
-            return .handled
-        }
-        .onKeyPress(.space) {
-            slideshowController.toggle()
-            return .handled
-        }
         .onTapGesture {
             if isFullScreen {
                 withAnimation(.easeInOut(duration: 0.3)) {
@@ -179,6 +167,15 @@ struct ContentView: View {
                 nextMedia()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToPrevious)) { _ in
+            previousMedia()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .navigateToNext)) { _ in
+            nextMedia()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .toggleSlideshow)) { _ in
+            slideshowController.toggle()
+        }
     }
     
     private func isVideo(url: URL) -> Bool {
@@ -187,17 +184,15 @@ struct ContentView: View {
     }
     
     private func previousMedia() {
-        if mediaFileManager.currentIndex > 0 {
-            withAnimation(.easeInOut(duration: 0.25)) {
-                mediaFileManager.currentIndex -= 1
-            }
+        withAnimation(.easeInOut(duration: 0.25)) {
+            mediaFileManager.navigateToPrevious()
         }
     }
     
     private func nextMedia() {
         if mediaFileManager.currentIndex < mediaFileManager.files.count - 1 {
             withAnimation(.easeInOut(duration: 0.25)) {
-                mediaFileManager.currentIndex += 1
+                mediaFileManager.navigateToNext()
             }
         } else if slideshowController.isRunning {
             slideshowController.stop()
