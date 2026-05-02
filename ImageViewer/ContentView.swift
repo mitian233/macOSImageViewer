@@ -105,50 +105,56 @@ struct ContentView: View {
         }
         .toolbar(isFullScreen ? .hidden : .visible, for: .windowToolbar)
         .toolbar {
-            ToolbarItemGroup(placement: .principal) {
-                Button(action: previousMedia) {
-                    Image(systemName: "chevron.left")
+            // 导航组
+            ToolbarItemGroup(placement: .automatic) {
+                ControlGroup {
+                    Button(action: previousMedia) {
+                        Image(systemName: "chevron.left")
+                    }
+                    .disabled(mediaFileManager.files.isEmpty || mediaFileManager.currentIndex == 0)
+                    
+                    Button(action: nextMedia) {
+                        Image(systemName: "chevron.right")
+                    }
+                    .disabled(mediaFileManager.files.isEmpty || mediaFileManager.currentIndex == mediaFileManager.files.count - 1)
                 }
-                .disabled(mediaFileManager.files.isEmpty || mediaFileManager.currentIndex == 0)
-                
-                Button(action: nextMedia) {
-                    Image(systemName: "chevron.right")
+            }
+            
+            // 缩放和旋转组
+            ToolbarItemGroup(placement: .automatic) {
+                ControlGroup {
+                    Button(action: { state.setScale(state.scale - 0.25) }) {
+                        Image(systemName: "minus.magnifyingglass")
+                    }
+                    
+                    Text("\(Int(state.scale * 100))%")
+                        .frame(width: 44)
+                        .monospacedDigit()
+                    
+                    Button(action: { state.setScale(state.scale + 0.25) }) {
+                        Image(systemName: "plus.magnifyingglass")
+                    }
+                    
+                    Button(action: { state.rotateLeft() }) {
+                        Image(systemName: "rotate.left")
+                    }
+                    
+                    Button(action: { state.rotateRight() }) {
+                        Image(systemName: "rotate.right")
+                    }
                 }
-                .disabled(mediaFileManager.files.isEmpty || mediaFileManager.currentIndex == mediaFileManager.files.count - 1)
-                
-                Divider()
-                
-                Button(action: { state.setScale(state.scale - 0.25) }) {
-                    Image(systemName: "minus.magnifyingglass")
-                }
-                
-                Text("\(Int(state.scale * 100))%")
-                    .frame(width: 50)
-                
-                Button(action: { state.setScale(state.scale + 0.25) }) {
-                    Image(systemName: "plus.magnifyingglass")
-                }
-                
-                Divider()
-                
-                Button(action: { state.rotateLeft() }) {
-                    Image(systemName: "rotate.left")
-                }
-                
-                Button(action: { state.rotateRight() }) {
-                    Image(systemName: "rotate.right")
-                }
-                
-                Divider()
-                
-                Button(action: { slideshowController.toggle() }) {
-                    Image(systemName: slideshowController.isRunning ? "pause.fill" : "play.fill")
-                }
-                
-                Divider()
-                
-                Button(action: self.toggleFullScreen) {
-                    Image(systemName: isFullScreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+            }
+            
+            // 播放和全屏组
+            ToolbarItemGroup(placement: .automatic) {
+                ControlGroup {
+                    Button(action: { slideshowController.toggle() }) {
+                        Image(systemName: slideshowController.isRunning ? "pause.fill" : "play.fill")
+                    }
+                    
+                    Button(action: self.toggleFullScreen) {
+                        Image(systemName: isFullScreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                    }
                 }
             }
         }
