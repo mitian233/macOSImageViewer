@@ -39,9 +39,11 @@ struct ContentView: View {
                         didFinish: $didVideoFinish
                     )
                     .id(currentURL)
+                    .transition(.opacity)
                 } else {
                     ImageDisplayView(state: state, url: currentURL)
                         .id(currentURL)
+                        .transition(.opacity)
                 }
             }
             
@@ -180,13 +182,17 @@ struct ContentView: View {
     
     private func previousMedia() {
         if mediaFileManager.currentIndex > 0 {
-            mediaFileManager.currentIndex -= 1
+            withAnimation(.easeInOut(duration: 0.25)) {
+                mediaFileManager.currentIndex -= 1
+            }
         }
     }
     
     private func nextMedia() {
         if mediaFileManager.currentIndex < mediaFileManager.files.count - 1 {
-            mediaFileManager.currentIndex += 1
+            withAnimation(.easeInOut(duration: 0.25)) {
+                mediaFileManager.currentIndex += 1
+            }
         } else if slideshowController.isRunning {
             slideshowController.stop()
         }
