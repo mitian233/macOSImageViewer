@@ -81,6 +81,18 @@ struct ContentView: View {
                 }
             }
         }
+        .onKeyPress(.leftArrow) {
+            previousMedia()
+            return .handled
+        }
+        .onKeyPress(.rightArrow) {
+            nextMedia()
+            return .handled
+        }
+        .onKeyPress(.space) {
+            slideshowController.toggle()
+            return .handled
+        }
         .onTapGesture {
             if isFullScreen {
                 withAnimation(.easeInOut(duration: 0.3)) {
@@ -176,7 +188,7 @@ struct ContentView: View {
         if mediaFileManager.currentIndex < mediaFileManager.files.count - 1 {
             mediaFileManager.currentIndex += 1
         } else if slideshowController.isRunning {
-            mediaFileManager.currentIndex = 0
+            slideshowController.stop()
         }
     }
     
