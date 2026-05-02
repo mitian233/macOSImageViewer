@@ -17,12 +17,14 @@ struct ImageViewerApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environment(mediaFileManager)
+                .environment(mediaCacheManager)
                 .onOpenURL(perform: handleOpenURL)
         }
         .defaultSize(width: 1000, height: 700)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("Open…") {}
+                Button("Open…") { presentOpenPanel() }
                     .keyboardShortcut("o")
             }
 
@@ -49,8 +51,30 @@ struct ImageViewerApp: App {
         }
     }
 
+    @MainActor
+    private func presentOpenPanel() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        panel.allowedFileTypes = ["jpg", "jpeg", "png", "gif", "heic", "mov", "mp4", "m4v"]
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        handleOpenSelection(url)
+    }
+
+    @MainActor
+    private func handleOpenSelection(_ url: URL) {
+        if url.hasDirectoryPath {
+            mediaFileManager.loadMedia(in: url)
+        } else {
+            let files = mediaFileManager.findAdjacentFiles(for: url)
+            mediaCacheManager.preloadAdjacent(currentIndex: mediaFileManager.currentIndex, files: files)
+        }
+    }
+
+    @MainActor
     private func handleOpenURL(_ url: URL) {
-        let files = mediaFileManager.findAdjacentFiles(for: url)
-        mediaCacheManager.preloadAdjacent(currentIndex: mediaFileManager.currentIndex, files: files)
+        handleOpenSelection(url)
     }
 }

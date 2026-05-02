@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 import SwiftUI
 
 struct ImageDisplayView: View {
@@ -7,6 +8,7 @@ struct ImageDisplayView: View {
 
     @State private var image: NSImage?
     @State private var imageSize: CGSize = .zero
+    @State private var isAnimatedGIF = false
     @State private var magnificationStartScale: CGFloat?
     @State private var dragStartOffset: CGSize?
     @State private var imageLoadTask: Task<Void, Never>?
@@ -17,9 +19,7 @@ struct ImageDisplayView: View {
                 Color.clear
 
                 if let image {
-                    Image(nsImage: image)
-                        .resizable()
-                        .scaledToFit()
+                    displayView(for: image)
                         .scaleEffect(state.scale)
                         .offset(state.offset)
                         .rotationEffect(state.rotation)
@@ -43,6 +43,17 @@ struct ImageDisplayView: View {
             .onChange(of: proxy.size) {
                 state.offset = clampedOffset(state.offset, in: proxy.size)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func displayView(for image: NSImage) -> some View {
+        if isAnimatedGIF {
+            AnimatedImageView(image: image)
+        } else {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFit()
         }
     }
 
@@ -119,20 +130,53 @@ struct ImageDisplayView: View {
         state.currentImageURL = url
         image = nil
         imageSize = .zero
+        isAnimatedGIF = false
         state.offset = .zero
         state.rotation = .zero
 
         guard let url else { return }
 
         imageLoadTask = Task {
-            let loadedImage = await Task.detached(priority: .userInitiated) {
-                NSImage(contentsOf: url)
+            let loadedImage = await Task.detached(priority: .userInitiated) { () -> NSImage? in
+                Self.loadSupportedImage(from: url)
             }.value
 
             guard !Task.isCancelled, state.currentImageURL == url else { return }
 
             image = loadedImage
             imageSize = loadedImage?.size ?? .zero
+            isAnimatedGIF = url.pathExtension.localizedCaseInsensitiveCompare("gif") == .orderedSame
+        }
+    }
+
+    private static func loadSupportedImage(from url: URL) -> NSImage? {
+        if let image = NSImage(contentsOf: url) {
+            if url.pathExtension.localizedCaseInsensitiveCompare("gif") == .orderedSame {
+                configureGIFLooping(for: image)
+            }
+            return image
+        }
+
+        guard url.pathExtension.localizedCaseInsensitiveCompare("heic") == .orderedSame else {
+            return nil
+        }
+
+        return loadHEICWithImageSource(from: url)
+    }
+
+    private static func loadHEICWithImageSource(from url: URL) -> NSImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil)
+        else {
+            return nil
+        }
+
+        return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+    }
+
+    private static func configureGIFLooping(for image: NSImage) {
+        for case let bitmapRep as NSBitmapImageRep in image.representations {
+            bitmapRep.setProperty(.loopCount, withValue: 0)
         }
     }
 
@@ -168,6 +212,24 @@ struct ImageDisplayView: View {
             let height = containerSize.height
             return CGSize(width: height * imageAspectRatio, height: height)
         }
+    }
+}
+
+private struct AnimatedImageView: NSViewRepresentable {
+    let image: NSImage
+
+    func makeNSView(context: Context) -> NSImageView {
+        let imageView = NSImageView()
+        imageView.imageAlignment = .alignCenter
+        imageView.imageScaling = .scaleProportionallyUpOrDown
+        imageView.animates = true
+        imageView.canDrawSubviewsIntoLayer = true
+        return imageView
+    }
+
+    func updateNSView(_ imageView: NSImageView, context: Context) {
+        imageView.image = image
+        imageView.animates = true
     }
 }
 
