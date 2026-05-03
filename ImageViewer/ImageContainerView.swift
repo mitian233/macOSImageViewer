@@ -1,22 +1,23 @@
 import AppKit
+import ImageIO
 import SwiftUI
 
-/// 容器视图，统一处理所有输入事件（触控板手势、鼠标滚轮、点击等）
 struct ImageContainerView: NSViewRepresentable {
     @Bindable var state: ImageViewerState
-    let image: NSImage?
-    let isAnimatedGIF: Bool
-    
+    let url: URL?
+
     func makeNSView(context: Context) -> ImageContainerNSView {
         let view = ImageContainerNSView()
         view.state = state
-        view.setupImageView(with: image, isAnimatedGIF: isAnimatedGIF)
+        view.loadImage(from: url)
         return view
     }
-    
+
     func updateNSView(_ nsView: ImageContainerNSView, context: Context) {
         nsView.state = state
-        nsView.updateImage(image, isAnimatedGIF: isAnimatedGIF)
+        if nsView.currentURL != url {
+            nsView.loadImage(from: url)
+        }
     }
 }
 
@@ -24,7 +25,8 @@ struct ImageContainerView: NSViewRepresentable {
 
 class ImageContainerNSView: NSView {
     var state: ImageViewerState?
-    
+    var currentURL: URL?
+
     private let imageView: NSImageView = {
         let iv = NSImageView()
         iv.imageAlignment = .alignCenter
@@ -32,23 +34,25 @@ class ImageContainerNSView: NSView {
         iv.animates = true
         return iv
     }()
-    
-    private var isAnimatedGIF: Bool = false
+
+    private var isAnimatedGIF = false
     private var lastMagnification: CGFloat = 1.0
     private var lastPanLocation: CGPoint = .zero
-    
+    private var accumulatedRotation: CGFloat = 0
+    private var boundarySwipeAccumulator: CGFloat = 0
+
     // MARK: - Setup
-    
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         setupView()
     }
-    
+
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         setupView()
     }
-    
+
     private func setupView() {
         wantsLayer = true
         addSubview(imageView)
@@ -59,200 +63,215 @@ class ImageContainerNSView: NSView {
             imageView.leadingAnchor.constraint(equalTo: leadingAnchor),
             imageView.trailingAnchor.constraint(equalTo: trailingAnchor)
         ])
-        
-        // 启用触控板手势
         allowedTouchTypes = [.direct, .indirect]
     }
-    
-    func setupImageView(with image: NSImage?, isAnimatedGIF: Bool) {
-        self.isAnimatedGIF = isAnimatedGIF
-        imageView.image = image
-        imageView.animates = isAnimatedGIF
+
+    // MARK: - Image Loading
+
+    func loadImage(from url: URL?) {
+        currentURL = url
+        guard let url else {
+            imageView.image = nil
+            return
+        }
+
+        let loadedImage = Self.loadSupportedImage(from: url)
+        let isGIF = url.pathExtension.localizedCaseInsensitiveCompare("gif") == .orderedSame
+        isAnimatedGIF = isGIF
+        imageView.image = loadedImage
+        imageView.animates = isGIF
         updateTransform()
     }
-    
-    func updateImage(_ image: NSImage?, isAnimatedGIF: Bool) {
-        self.isAnimatedGIF = isAnimatedGIF
-        imageView.image = image
-        imageView.animates = isAnimatedGIF
-        updateTransform()
+
+    private nonisolated static func loadSupportedImage(from url: URL) -> NSImage? {
+        if let image = NSImage(contentsOf: url) {
+            if url.pathExtension.localizedCaseInsensitiveCompare("gif") == .orderedSame {
+                configureGIFLooping(for: image)
+            }
+            return image
+        }
+        guard url.pathExtension.localizedCaseInsensitiveCompare("heic") == .orderedSame else {
+            return nil
+        }
+        return loadHEICWithImageSource(from: url)
     }
-    
+
+    private nonisolated static func loadHEICWithImageSource(from url: URL) -> NSImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil)
+        else { return nil }
+        return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+    }
+
+    private nonisolated static func configureGIFLooping(for image: NSImage) {
+        for case let bitmapRep as NSBitmapImageRep in image.representations {
+            bitmapRep.setProperty(.loopCount, withValue: 0)
+        }
+    }
+
     // MARK: - Transform
-    
+
     private func updateTransform() {
-        guard let state = state else { return }
-        
+        guard let state else { return }
+        let containerSize = bounds.size
+        let centerX = containerSize.width / 2
+        let centerY = containerSize.height / 2
+
         var transform = CGAffineTransform.identity
-        transform = transform.translatedBy(x: state.offset.width, y: state.offset.height)
+        transform = transform.translatedBy(x: centerX + state.offset.width, y: centerY + state.offset.height)
         transform = transform.scaledBy(x: state.scale, y: state.scale)
         transform = transform.rotated(by: state.rotation.radians)
-        
+        transform = transform.translatedBy(x: -centerX, y: -centerY)
+
         imageView.layer?.setAffineTransform(transform)
     }
-    
-    // MARK: - Event Handling
-    
+
+    // MARK: - Scroll Wheel (Zoom / Pan)
+
     override func scrollWheel(with event: NSEvent) {
-        guard let state = state else {
+        guard let state else {
             super.scrollWheel(with: event)
             return
         }
-        
-        let isCommandHeld = event.modifierFlags.contains(.command)
-        
-        if isCommandHeld {
-            // Command + 滚轮 = 缩放
+        if event.modifierFlags.contains(.command) {
             handleZoomScroll(event: event, state: state)
         } else {
-            // 普通滚动 = 平移
             handlePanScroll(event: event, state: state)
         }
     }
-    
+
     private func handleZoomScroll(event: NSEvent, state: ImageViewerState) {
-        // 获取鼠标位置作为锚点
         let anchor = convert(event.locationInWindow, from: nil)
         let containerSize = bounds.size
-        
-        // 计算缩放增量
-        let zoomDelta: CGFloat
-        if event.hasPreciseScrollingDeltas {
-            // 触控板：使用精确增量
-            zoomDelta = -event.scrollingDeltaY * 0.001
-        } else {
-            // 鼠标滚轮：使用传统增量
-            zoomDelta = -event.scrollingDeltaY * 0.01
-        }
-        
+        let zoomDelta: CGFloat = event.hasPreciseScrollingDeltas
+            ? -event.scrollingDeltaY * 0.001
+            : -event.scrollingDeltaY * 0.01
         state.zoom(by: zoomDelta, anchor: anchor, containerSize: containerSize)
         updateTransform()
     }
-    
+
     private func handlePanScroll(event: NSEvent, state: ImageViewerState) {
         let containerSize = bounds.size
-        
-        // 触控板双指滑动：平滑平移
         let deltaX = event.scrollingDeltaX
         let deltaY = -event.scrollingDeltaY
-        
-        // 如果是触控板且没有精确增量，说明是鼠标滚轮，不处理平移
+
         if !event.hasPreciseScrollingDeltas && (deltaX == 0 || abs(deltaY) > abs(deltaX)) {
             super.scrollWheel(with: event)
             return
         }
-        
-        state.pan(by: CGSize(width: -deltaX, height: -deltaY), containerSize: containerSize)
+
+        let rawDelta = CGSize(width: -deltaX, height: -deltaY)
+        let rotatedDelta = ImageViewerState.rotateSize(rawDelta, by: -state.rotation)
+        let feedback = state.panWithFeedback(by: rotatedDelta, containerSize: containerSize)
+
+        if feedback.reachedHorizontalBoundary {
+            boundarySwipeAccumulator += feedback.remaining.width
+        } else {
+            boundarySwipeAccumulator = 0
+        }
+
+        let threshold: CGFloat = 50
+        if abs(boundarySwipeAccumulator) >= threshold {
+            if boundarySwipeAccumulator > 0 {
+                NotificationCenter.default.post(name: .navigateToNext, object: nil)
+            } else {
+                NotificationCenter.default.post(name: .navigateToPrevious, object: nil)
+            }
+            boundarySwipeAccumulator = 0
+        }
+
         updateTransform()
     }
-    
-    // MARK: - Magnification Gesture (Pinch to Zoom)
-    
+
+    // MARK: - Magnification (Pinch to Zoom)
+
     override func magnify(with event: NSEvent) {
-        guard let state = state else {
+        guard let state else {
             super.magnify(with: event)
             return
         }
-        
         let containerSize = bounds.size
         let anchor = convert(event.locationInWindow, from: nil)
-        
+
         if event.phase == .began {
             lastMagnification = 1.0
         }
-        
         let delta = event.magnification
         lastMagnification += delta
-        
-        // 直接使用 event.magnification 作为增量
         state.zoom(by: delta, anchor: anchor, containerSize: containerSize)
         updateTransform()
-        
+
         if event.phase == .ended {
             lastMagnification = 1.0
         }
     }
-    
-    // MARK: - Pan Gesture (Two-finger Pan on Trackpad)
-    // Note: NSView doesn't have a dedicated pan gesture. 
-    // Trackpad two-finger pan is handled via scrollWheel with precise deltas.
-    
-    // MARK: - Mouse Events
-    
+
+    // MARK: - Mouse Drag (with reverse rotation)
+
     override func mouseDown(with event: NSEvent) {
         lastPanLocation = convert(event.locationInWindow, from: nil)
         super.mouseDown(with: event)
     }
-    
+
     override func mouseDragged(with event: NSEvent) {
-        guard let state = state, state.scale > 1.0 else {
+        guard let state, state.scale > 1.0 else {
             super.mouseDragged(with: event)
             return
         }
-        
         let containerSize = bounds.size
         let currentLocation = convert(event.locationInWindow, from: nil)
-        let delta = CGSize(
+        let rawDelta = CGSize(
             width: currentLocation.x - lastPanLocation.x,
             height: currentLocation.y - lastPanLocation.y
         )
-        
-        state.pan(by: delta, containerSize: containerSize)
+        let rotatedDelta = ImageViewerState.rotateSize(rawDelta, by: -state.rotation)
+        state.pan(by: rotatedDelta, containerSize: containerSize)
         updateTransform()
-        
         lastPanLocation = currentLocation
     }
-    
+
     override func mouseUp(with event: NSEvent) {
         lastPanLocation = .zero
         super.mouseUp(with: event)
     }
-    
-    // MARK: - Double Click
-    
-    override func mouseEntered(with event: NSEvent) {
-        super.mouseEntered(with: event)
-    }
-    
-    // MARK: - Rotation Gesture
-    
+
+    // MARK: - Rotation (90° increments)
+
     override func rotate(with event: NSEvent) {
-        guard let state = state else {
+        guard let state else {
             super.rotate(with: event)
             return
         }
-        
-        state.rotation += .radians(Double(event.rotation))
+        accumulatedRotation += CGFloat(event.rotation)
+
+        if abs(accumulatedRotation) >= 45 {
+            if accumulatedRotation > 0 {
+                state.rotateRight()
+            } else {
+                state.rotateLeft()
+            }
+            accumulatedRotation = 0
+        }
         updateTransform()
     }
-    
-    // MARK: - Smart Zoom (Double tap on trackpad)
-    
+
+    // MARK: - Smart Zoom (Double tap)
+
     override func smartMagnify(with event: NSEvent) {
-        guard let state = state else {
+        guard let state else {
             super.smartMagnify(with: event)
             return
         }
-        
-        // 双击切换 1x / 2x
         let anchor = convert(event.locationInWindow, from: nil)
         let containerSize = bounds.size
         let targetScale: CGFloat = state.scale == 1.0 ? 2.0 : 1.0
-        
         state.zoom(to: targetScale, anchor: anchor, containerSize: containerSize)
         updateTransform()
     }
-    
-    // MARK: - Accepts First Mouse
-    
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
-        return true
-    }
-    
-    // MARK: - Hit Test
-    
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        // 接收所有事件
-        return self
-    }
+
+    // MARK: - Event Acceptance
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { self }
 }

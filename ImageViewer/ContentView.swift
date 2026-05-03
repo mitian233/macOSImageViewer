@@ -41,7 +41,7 @@ struct ContentView: View {
                     .id(currentURL)
                     .transition(.opacity)
                 } else {
-                    ImageDisplayView(state: state, url: currentURL)
+                    ImageContainerView(state: state, url: currentURL)
                         .id(currentURL)
                         .transition(.opacity)
                 }

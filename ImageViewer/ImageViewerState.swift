@@ -44,6 +44,53 @@ final class ImageViewerState {
         rotation += .degrees(90)
     }
     
+    // MARK: - Delta Rotation
+    
+    /// Rotates a CGSize delta by an angle. Used for reverse-rotating drag deltas
+    /// so that mouse drag direction stays visually consistent after image rotation.
+    static func rotateSize(_ size: CGSize, by angle: Angle) -> CGSize {
+        size.applying(CGAffineTransform(rotationAngle: angle.radians))
+    }
+    
+    // MARK: - Pan with Boundary Feedback
+    
+    struct PanFeedback {
+        let applied: CGSize
+        let remaining: CGSize
+        let reachedHorizontalBoundary: Bool
+        let reachedVerticalBoundary: Bool
+    }
+    
+    /// Pans by delta and returns feedback about what was applied vs what overflowed at boundaries.
+    func panWithFeedback(by delta: CGSize, containerSize: CGSize) -> PanFeedback {
+        guard scale > 1.0 else {
+            return PanFeedback(applied: .zero, remaining: delta, reachedHorizontalBoundary: false, reachedVerticalBoundary: false)
+        }
+        
+        let newWidth = offset.width + delta.width
+        let newHeight = offset.height + delta.height
+        let maxX = containerSize.width * (scale - 1) / 2
+        let maxY = containerSize.height * (scale - 1) / 2
+        
+        let clampedWidth = min(max(newWidth, -maxX), maxX)
+        let clampedHeight = min(max(newHeight, -maxY), maxY)
+        
+        let appliedWidth = clampedWidth - offset.width
+        let appliedHeight = clampedHeight - offset.height
+        
+        offset = CGSize(width: clampedWidth, height: clampedHeight)
+        
+        let reachedHorizontal = abs(newWidth) >= maxX
+        let reachedVertical = abs(newHeight) >= maxY
+        
+        return PanFeedback(
+            applied: CGSize(width: appliedWidth, height: appliedHeight),
+            remaining: CGSize(width: delta.width - appliedWidth, height: delta.height - appliedHeight),
+            reachedHorizontalBoundary: reachedHorizontal,
+            reachedVerticalBoundary: reachedVertical
+        )
+    }
+    
     // MARK: - Zoom & Pan
     
     func zoom(by delta: CGFloat, anchor: CGPoint, containerSize: CGSize) {

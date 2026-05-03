@@ -1,3 +1,5 @@
+// NOTE: This view is currently unused. ImageContainerView provides superior trackpad gesture support.
+
 import AppKit
 import ImageIO
 import SwiftUI
