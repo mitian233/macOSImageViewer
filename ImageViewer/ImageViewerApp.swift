@@ -21,6 +21,11 @@ struct ImageViewerApp: App {
                 .environment(mediaFileManager)
                 .environment(mediaCacheManager)
                 .onOpenURL(perform: handleOpenURL)
+                .onAppear {
+                    if let testDir = UserDefaults.standard.string(forKey: "testDirectory") {
+                        mediaFileManager.loadMedia(in: URL(fileURLWithPath: testDir))
+                    }
+                }
         }
         .defaultSize(width: 1000, height: 700)
         .commands {

@@ -9,6 +9,10 @@ struct VideoDisplayView: View {
 
     var body: some View {
         VideoPlayerView(url: url, isPlaying: $isPlaying, didFinish: $didFinish)
+            .accessibilityIdentifier("VideoPlayerView")
+            .onTapGesture {
+                isPlaying.toggle()
+            }
             .onAppear {
                 didFinish = false
                 isPlaying = true
@@ -16,6 +20,14 @@ struct VideoDisplayView: View {
             .onDisappear {
                 isPlaying = false
                 didFinish = false
+            }
+            .overlay(alignment: .bottom) {
+                if !isPlaying {
+                    Image(systemName: "play.circle.fill")
+                        .font(.system(size: 60))
+                        .opacity(0.8)
+                        .accessibilityIdentifier("VideoPlayOverlay")
+                }
             }
     }
 }

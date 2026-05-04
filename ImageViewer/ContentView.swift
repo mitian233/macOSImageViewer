@@ -9,6 +9,8 @@ import SwiftUI
 import AppKit
 
 struct ContentView: View {
+    internal var didAppear: ((Self) -> Void)?
+
     @Environment(MediaFileManager.self) private var mediaFileManager
     @Environment(MediaCacheManager.self) private var mediaCacheManager
     
@@ -175,6 +177,9 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .toggleSlideshow)) { _ in
             slideshowController.toggle()
+        }
+        .onAppear {
+            self.didAppear?(self)
         }
     }
     
