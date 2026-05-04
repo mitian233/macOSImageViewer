@@ -1,0 +1,84 @@
+name: Test
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: test-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Install xcpretty
+        run: sudo gem install xcpretty --no-document
+
+      - name: Prepare artifacts
+        run: mkdir -p artifacts
+
+      - name: Run tests
+        shell: bash
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project ImageViewer.xcodeproj \
+            -scheme ImageViewer \
+            -destination 'platform=macOS' \
+            -resultBundlePath artifacts/ImageViewerTests.xcresult \
+            -enableCodeCoverage YES \
+            | tee artifacts/xcodebuild.log \
+            | xcpretty --report junit --output artifacts/junit.xml
+
+      - name: Generate coverage report
+        if: always()
+        shell: bash
+        run: |
+          if [ -d "artifacts/ImageViewerTests.xcresult" ]; then
+            xcrun xccov view --report --json artifacts/ImageViewerTests.xcresult > artifacts/coverage.json
+            xcrun xccov view --report artifacts/ImageViewerTests.xcresult > artifacts/coverage.txt
+
+            python3 - <<'PY'
+            from pathlib import Path
+            import json
+
+            report = json.loads(Path('artifacts/coverage.json').read_text())
+            lines = ['# Code Coverage', '']
+
+            def pct(value):
+                return f'{value * 100:.2f}%'
+
+            for target in report.get('targets', []):
+                target_name = target.get('name', 'Unknown Target')
+                target_coverage = target.get('lineCoverage', 0)
+                lines.append(f'## {target_name} — {pct(target_coverage)}')
+                for file_info in target.get('files', []):
+                    file_name = file_info.get('path') or file_info.get('name', 'Unknown File')
+                    file_coverage = file_info.get('lineCoverage', 0)
+                    executable = file_info.get('executableLines', 0)
+                    covered = file_info.get('coveredLines', 0)
+                    lines.append(f'- {file_name} — {pct(file_coverage)} ({covered}/{executable})')
+                lines.append('')
+
+            Path('artifacts/coverage-summary.md').write_text('\n'.join(lines).rstrip() + '\n')
+            PY
+          else
+            echo "Coverage bundle not found; skipping coverage report generation."
+          fi
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-artifacts
+          path: artifacts/
+          if-no-files-found: warn
